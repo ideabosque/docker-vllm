@@ -1,0 +1,43 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:${IMAGE_TAG:-latest}
+    container_name: container-vllm
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    volumes:
+      - ${MODELS_DIR:-./models}:/root/.cache/huggingface
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HF_HUB_ENABLE_HF_TRANSFER=${HF_HUB_ENABLE_HF_TRANSFER:-1}
+    shm_size: "32g"
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: >
+      ${MODEL_ID}
+      --host 0.0.0.0
+      --port 8000
+      --tensor-parallel-size ${TP_SIZE:-1}
+      --dtype ${DTYPE:-auto}
+      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.88}
+      --max-model-len ${MAX_MODEL_LEN:-8192}
+      ${TOOL_CALL_PARSER:+--enable-auto-tool-choice --tool-call-parser} ${TOOL_CALL_PARSER:-}
+      ${REASONING_PARSER:+--reasoning-parser} ${REASONING_PARSER:-}
+      ${VLLM_EXTRA_ARGS:-}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
